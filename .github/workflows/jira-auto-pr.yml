@@ -96,6 +96,7 @@ jobs:
           ref: ${{ env.EXISTING_PR_NUMBER && env.BRANCH_NAME || env.BASE_BRANCH }}
           token: ${{ steps.app.outputs.token }}
           persist-credentials: false # the agent never gets git push credentials
+          fetch-depth: 0 # full history, so pushed branches share real ancestry with base (avoids duplicate-commit diffs)
           path: work
 
       - name: Build prompt from template
