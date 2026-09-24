@@ -207,18 +207,15 @@ jobs:
           git config user.email "${{ vars.AGENT_APP_BOT_EMAIL }}"
           git switch -C "$BRANCH_NAME"
 
-          # Use the agent's own summary for the commit subject; the ticket title alone isn't descriptive of the change
+          # Single-line subject only ("[KEY] short description", <=72 chars); the agent's full summary goes in the PR body instead
+          prefix="[$JIRA_KEY] "
+          budget=$(( 72 - ${#prefix} ))
           subject="$JIRA_SUMMARY"
           if [[ -f "$RUNNER_TEMP/out/SUMMARY.md" ]]; then
-            first_line=$(grep -m1 -v '^[[:space:]]*$' "$RUNNER_TEMP/out/SUMMARY.md" | sed -E 's/^#+[[:space:]]*//; s/^[-*][[:space:]]*//')
-            [[ -n "$first_line" ]] && subject="${first_line:0:72}"
+            first_line=$(grep -v '^[[:space:]]*$' "$RUNNER_TEMP/out/SUMMARY.md" | grep -v '^#' | head -n1 | sed -E 's/^[-*][[:space:]]*//')
+            [[ -n "$first_line" ]] && subject="$first_line"
           fi
-          {
-            echo "[$JIRA_KEY] $subject"
-            echo
-            [[ -f "$RUNNER_TEMP/out/SUMMARY.md" ]] && cat "$RUNNER_TEMP/out/SUMMARY.md"
-          } > "$RUNNER_TEMP/commit-message.txt"
-          git commit -q -F "$RUNNER_TEMP/commit-message.txt"
+          git commit -q -m "${prefix}${subject:0:$budget}"
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" "$BRANCH_NAME"
 
           if [[ -n "$EXISTING_PR_NUMBER" ]]; then
