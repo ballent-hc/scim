@@ -172,26 +172,4 @@ If you have ideas how we could enforce these rules in the server itself do not h
 *ALL Handlers*: Attribute values SHALL NOT be returned. \
 Note: These attributes usually also has a returned setting of "never".
 
-## Contributing
-
-[![Contributors](https://img.shields.io/github/contributors/elimity-com/scim.svg)](https://gitHub.com/elimity-com/scim/contributors/)
-
-We are happy to review pull requests,
-but please first discuss the change you wish to make via issue, email,
-or any other method with the owners of this repository before making a change.
-
-If you would like to propose a change please ensure the following:
-
-- All checks of GitHub Actions are
-  passing ([GolangCI-Lint](https://github.com/golangci/golangci-lint): `misspell`, `godot` and `whitespace`)
-- All already existing tests are passing.
-- You have written tests that cover the code you are making, make sure to include edge cases.
-- There is documentation for at least all public functions you have added.
-- New public functions and structures are kept to a minimum.
-- The same practices are applied (such as the anatomy of methods, names, etc.)
-- Your changes are compliant with SCIM v2.0 (released as
-  [RFC7642](https://tools.ietf.org/html/rfc7642),
-  [RFC7643](https://tools.ietf.org/html/rfc7643) and
-  [RFC7644](https://tools.ietf.org/html/rfc7644) under [IETF](https://ietf.org/)).
-
 This repository is a fork owned and maintained by [ballent-hc](https://github.com/ballent-hc).
