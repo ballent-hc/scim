@@ -5,33 +5,34 @@
 
 [![Tag](https://img.shields.io/github/tag/elimity-com/scim.svg)](https://gitHub.com/elimity-com/scim/releases)
 
-This is an open source implementation of the [SCIM v2.0](http://www.simplecloud.info/#Specification) specification for
-use in Golang.
-SCIM defines a flexible schema mechanism and REST API for managing identity data.
-The goal is to reduce the complexity of user management operations by providing patterns for exchanging schemas using
-HTTP.
+🤠 Yeehaw, partner! Saddle up, because this is one *slick* open source ride through the
+[SCIM v2.0](http://www.simplecloud.info/#Specification) specification for Golang. 🐄🚗💨
 
-In this implementation it is easy to add *custom* schemas and extensions with the provided structures.
-Incoming resources will be *validated* by their corresponding schemas before being passed on to their callbacks.
+SCIM keeps your identity data wrangled with a flexible schema mechanism and a REST API, so managing users doesn't
+feel like herding cats across the whole HTTP prairie.
 
-The following features are supported:
+Wanna bring your own *custom* schemas and extensions to the rodeo? Easy — just plug 'em into the provided
+structures. Every resource that rides in gets *validated* against its schema before it's handed off to your
+callbacks, so nothing gets past the fence unchecked. 🐘
+
+Here's what's in the corral:
 
 - GET for `/Schemas`, `/ServiceProviderConfig` and `/ResourceTypes`
 - CRUD (POST/GET/PUT/DELETE and PATCH) for your own resource types (i.e. `/Users`, `/Groups`, `/Employees`, ...)
 
-Other optional features such as sorting, bulk, etc. are **not** supported in this version.
+Fancier stuff like sorting and bulk operations? Not in this rodeo — **not** supported in this version. 🤷
 
-## Installation
+## 🐘 Installation
 
-Assuming you already have a (recent) version of Go installed, you can get the code with go get:
+Got a (recent) version of Go saddled up already? Great, giddy up and grab the code with go get:
 
 ```bash
 $ go get github.com/elimity-com/scim
 ```
 
-## Usage
+## 🐄 Usage
 
-**!** errors are ignored for simplicity.
+**!** errors are ignored for simplicity — we're keeping this trail ride breezy.
 
 ### 1. Create a service provider configuration.
 
@@ -44,7 +45,7 @@ config := scim.ServiceProviderConfig{
 }
 ```
 
-**!** no additional features/operations are supported in this version.
+**!** no additional features/operations are supported in this version — this ain't a rodeo with extra tricks.
 
 ### 2. Create all supported schemas and extensions.
 
@@ -96,7 +97,7 @@ var userResourceHandler scim.ResourceHandler
 // initialize w/ own implementation
 ```
 
-**!** each resource type should have its own resource handler.
+**!** each resource type should have its own resource handler — every critter gets its own wrangler. 🐄
 
 #### 3.2 Resource Type
 
@@ -131,18 +132,19 @@ serverOpts := []ServerOption{
 server, err := NewServer(serverArgs, serverOpts...)
 ```
 
-## Backwards Compatibility
+## 🚗 Backwards Compatibility
 
-Even though the SCIM package has been running in some production environments, it is still in an early stage, and not
-all features are supported. So be aware that a change in the minor version could break your implementation. We will not
-make any breaking changes that takes hours to fix, but some functions might change name or signature.
+Even though this SCIM rig has been cruising through production for a while, it's still an early-stage build and not
+every feature is bolted on yet. Heads up: a minor version bump could still rattle your implementation. We won't
+throw any breaking changes at you that take hours to fix, but a function name or signature might shift gears now
+and then.
 
-This was the case for `v0.1` to `v0.2.0`.
+That's exactly what happened going from `v0.1` to `v0.2.0`.
 
-## String Values for Attributes
+## 🐘 String Values for Attributes
 
-By default, the SCIM server will NOT use the `string` type for all attributes, since this is NOT compliant with the
-SCIM specification. It is still possible to enable this behavior by toggling a flag within the `schema` package.
+By default, this rig will NOT use the `string` type for all attributes, since that's NOT compliant with the SCIM
+spec. Still want that behavior anyway? Flip the switch in the `schema` package:
 
 ```go
 import "github.com/elimity-com/scim/schema"
@@ -150,15 +152,15 @@ import "github.com/elimity-com/scim/schema"
 schema.SetAllowStringValues(true)
 ```
 
-## Addition Checks/Tests
+## 🤠 Additional Checks/Tests
 
-Not everything can be checked by the SCIM server itself.
-Below are some things listed that we expect that the implementation covers.
+Not everything can be checked by the SCIM server itself — some things you gotta wrangle yourself.
+Below's a list of stuff we expect your implementation to cover.
 
 **!** this list is currently incomplete!
 
-We want to keep this list as short as possible.
-If you have ideas how we could enforce these rules in the server itself do not hesitate to open
+We want to keep this list as short as a cowboy's coffee break.
+Got ideas on how we could bake these rules into the server itself? Don't be shy, open
 [an issue](https://github.com/elimity-com/scim/issues/new) or a PR.
 
 ### Mutability
@@ -172,24 +174,6 @@ If you have ideas how we could enforce these rules in the server itself do not h
 *ALL Handlers*: Attribute values SHALL NOT be returned. \
 Note: These attributes usually also has a returned setting of "never".
 
-## Contributing
+## 🤠 Fork Notice
 
-[![Contributors](https://img.shields.io/github/contributors/elimity-com/scim.svg)](https://gitHub.com/elimity-com/scim/contributors/)
-
-We are happy to review pull requests,
-but please first discuss the change you wish to make via issue, email,
-or any other method with the owners of this repository before making a change.
-
-If you would like to propose a change please ensure the following:
-
-- All checks of GitHub Actions are
-  passing ([GolangCI-Lint](https://github.com/golangci/golangci-lint): `misspell`, `godot` and `whitespace`)
-- All already existing tests are passing.
-- You have written tests that cover the code you are making, make sure to include edge cases.
-- There is documentation for at least all public functions you have added.
-- New public functions and structures are kept to a minimum.
-- The same practices are applied (such as the anatomy of methods, names, etc.)
-- Your changes are compliant with SCIM v2.0 (released as
-  [RFC7642](https://tools.ietf.org/html/rfc7642),
-  [RFC7643](https://tools.ietf.org/html/rfc7643) and
-  [RFC7644](https://tools.ietf.org/html/rfc7644) under [IETF](https://ietf.org/)).
+🚗 This repository is a fork of [elimity-com/scim](https://github.com/elimity-com/scim), owned and maintained by **ballent-hc**.
