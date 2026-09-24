@@ -193,3 +193,5 @@ If you would like to propose a change please ensure the following:
   [RFC7642](https://tools.ietf.org/html/rfc7642),
   [RFC7643](https://tools.ietf.org/html/rfc7643) and
   [RFC7644](https://tools.ietf.org/html/rfc7644) under [IETF](https://ietf.org/)).
+
+This repository is a fork of [elimity-com/scim](https://github.com/elimity-com/scim), owned and maintained by ballent-hc.
