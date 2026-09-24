@@ -5,11 +5,11 @@ on:
     types: [jira-auto-pr]
 
 permissions:
-  contents: read            # read this pipeline repo (prompt template, repo map)
-  copilot-requests: write   # Copilot CLI billed to the organization via GITHUB_TOKEN
+  contents: read # read this pipeline repo (prompt template, repo map)
+  copilot-requests: write # Copilot CLI billed to the organization via GITHUB_TOKEN
 
 concurrency:
-  group: jira-auto-pr-${{ github.event.client_payload.jira_key }}
+  group: jira-auto-pr-${{ github.event.client_payload.ticket_meta.id }}
   cancel-in-progress: false
 
 jobs:
@@ -18,13 +18,13 @@ jobs:
     timeout-minutes: 45
     env:
       # Payload goes through env vars, never inlined into scripts, so ticket text can't inject shell
-      JIRA_KEY: ${{ github.event.client_payload.jira_key }}
-      JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
-      JIRA_DESCRIPTION: ${{ github.event.client_payload.description }}
-      JIRA_URL: ${{ github.event.client_payload.url }}
-      REPO_ALIAS: ${{ github.event.client_payload.repo_alias }}
-      REQUESTED_BASE: ${{ github.event.client_payload.base }}
-      MAX_AI_CREDITS: "50"        # per-session spend cap; tune after a few runs
+      JIRA_KEY: ${{ github.event.client_payload.ticket_meta.id }}
+      JIRA_SUMMARY: ${{ github.event.client_payload.issue_details.title }}
+      JIRA_DESCRIPTION: ${{ github.event.client_payload.issue_details.body }}
+      JIRA_URL: ${{ github.event.client_payload.ticket_meta.url }}
+      REPO_ALIAS: ${{ github.event.client_payload.git_routing.target_repo }}
+      REQUESTED_BASE: ${{ github.event.client_payload.git_routing.base_branch }}
+      MAX_AI_CREDITS: "50" # per-session spend cap; tune after a few runs
       MIN_DESCRIPTION_CHARS: "80" # quality gate before any credits are spent
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
@@ -83,7 +83,7 @@ jobs:
           repository: ${{ env.TARGET_REPO }}
           ref: ${{ env.BASE_BRANCH }}
           token: ${{ steps.app.outputs.token }}
-          persist-credentials: false   # the agent never gets git push credentials
+          persist-credentials: false # the agent never gets git push credentials
           path: work
 
       - name: Build prompt from template
