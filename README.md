@@ -5,8 +5,8 @@
 
 [![Tag](https://img.shields.io/github/tag/elimity-com/scim.svg)](https://gitHub.com/elimity-com/scim/releases)
 
-This is an open source implementation of the [SCIM v2.0](http://www.simplecloud.info/#Specification) specification for
-use in Golang.
+🤠 Yeehaw! This is a slick, open source implementation of the [SCIM v2.0](http://www.simplecloud.info/#Specification)
+specification for Golang, built to make identity management feel effortless. 🚗💨
 SCIM defines a flexible schema mechanism and REST API for managing identity data.
 The goal is to reduce the complexity of user management operations by providing patterns for exchanging schemas using
 HTTP.
@@ -21,7 +21,7 @@ The following features are supported:
 
 Other optional features such as sorting, bulk, etc. are **not** supported in this version.
 
-## Installation
+## 🐘 Installation
 
 Assuming you already have a (recent) version of Go installed, you can get the code with go get:
 
@@ -29,7 +29,7 @@ Assuming you already have a (recent) version of Go installed, you can get the co
 $ go get github.com/elimity-com/scim
 ```
 
-## Usage
+## 🐄 Usage
 
 **!** errors are ignored for simplicity.
 
@@ -172,4 +172,6 @@ If you have ideas how we could enforce these rules in the server itself do not h
 *ALL Handlers*: Attribute values SHALL NOT be returned. \
 Note: These attributes usually also has a returned setting of "never".
 
-This repository is a fork of [elimity-com/scim](https://github.com/elimity-com/scim), owned and maintained by ballent-hc.
+## 🤠 Fork Notice
+
+🚗 This repository is a fork of [elimity-com/scim](https://github.com/elimity-com/scim), owned and maintained by **ballent-hc**.
