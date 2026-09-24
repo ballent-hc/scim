@@ -1,83 +1,257 @@
 name: jira-auto-pr
 
 on:
-  # Targeted trigger: POST /repos/{owner}/{repo}/actions/workflows/jira-auto-pr.yml/dispatches
-  # Every input the caller sends must be declared here, or GitHub returns 422.
-  workflow_dispatch:
-    inputs:
-      jira_key:
-        description: Jira ticket key (e.g. PROJ-123)
-        type: string
-        required: true
-      summary:
-        description: Ticket summary
-        type: string
-        required: false
-        default: ""
-      description:
-        description: Ticket description
-        type: string
-        required: false
-        default: ""
-      url:
-        description: Link to the Jira ticket
-        type: string
-        required: false
-        default: ""
-      repo_alias:
-        description: Target repo alias (e.g. cloud-idp)
-        type: string
-        required: false
-        default: ""
-      base:
-        description: Base branch (empty = target repo's default branch)
-        type: string
-        required: false
-        default: ""
-      requested_by:
-        description: Jira account ID of the requester
-        type: string
-        required: false
-        default: ""
-
-  # Also accept repository dispatch while testing:
-  # POST /repos/{owner}/{repo}/dispatches with {"event_type": "jira-auto-pr", "client_payload": {...}}
   repository_dispatch:
     types: [jira-auto-pr]
 
-permissions: {}
+permissions:
+  contents: read            # read this pipeline repo (prompt template, repo map)
+  copilot-requests: write   # Copilot CLI billed to the organization via GITHUB_TOKEN
+
+concurrency:
+  group: jira-auto-pr-${{ github.event.client_payload.jira_key }}
+  cancel-in-progress: false
 
 jobs:
-  log-payload:
+  run:
     runs-on: ubuntu-latest
-    steps:
-      - name: Log payload
-        env:
-          # Passed through env (never inlined into the script) so ticket text can't inject shell commands
-          EVENT_NAME: ${{ github.event_name }}
-          INPUTS: ${{ toJSON(github.event.inputs) }}
-          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-          ACTION: ${{ github.event.action }}
-        run: |
-          echo "Triggered by: $EVENT_NAME"
+    timeout-minutes: 45
+    env:
+      # Payload goes through env vars, never inlined into scripts, so ticket text can't inject shell
+      JIRA_KEY: ${{ github.event.client_payload.jira_key }}
+      JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
+      JIRA_DESCRIPTION: ${{ github.event.client_payload.description }}
+      JIRA_URL: ${{ github.event.client_payload.url }}
+      REPO_ALIAS: ${{ github.event.client_payload.repo_alias }}
+      REQUESTED_BASE: ${{ github.event.client_payload.base }}
+      MAX_AI_CREDITS: "50"        # per-session spend cap; tune after a few runs
+      MIN_DESCRIPTION_CHARS: "80" # quality gate before any credits are spent
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            payload="$INPUTS"
-          else
-            echo "event_type: $ACTION"
-            payload="$CLIENT_PAYLOAD"
+    steps:
+      - name: Check out pipeline repo (prompt template and repo map)
+        uses: actions/checkout@v4
+        with:
+          path: pipeline
+          persist-credentials: false
+
+      - name: Validate payload and resolve target repo
+        run: |
+          if ! [[ "$JIRA_KEY" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]]; then
+            echo "::error::Invalid Jira key '$JIRA_KEY'"; exit 1
+          fi
+          repo=$(jq -r --arg a "$REPO_ALIAS" '.[$a] // empty' pipeline/.github/prbot-repos.json)
+          if [[ -z "$repo" ]]; then
+            echo "FAIL_REASON=Unknown repo alias '$REPO_ALIAS'. Valid aliases: $(jq -r 'keys | join(", ")' pipeline/.github/prbot-repos.json)" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo "TARGET_REPO=$repo" >> "$GITHUB_ENV"
+          echo "REPO_NAME=${repo#*/}" >> "$GITHUB_ENV"
+
+      - name: Ticket quality gate
+        run: |
+          chars=$(printf '%s' "$JIRA_DESCRIPTION" | wc -c)
+          if (( chars < MIN_DESCRIPTION_CHARS )); then
+            echo "FAIL_REASON=The ticket description is too short for the agent to work from. Add requirements and acceptance criteria, then trigger it again." >> "$GITHUB_ENV"
+            exit 1
           fi
 
-          echo "::group::Payload"
-          jq . <<< "$payload"
-          echo "::endgroup::"
+      - name: Mint a short-lived token for the target repo only
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.REPO_NAME }}
+
+      - name: Resolve base branch
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          base="${REQUESTED_BASE:-$(gh api "repos/$TARGET_REPO" --jq .default_branch)}"
+          if ! gh api "repos/$TARGET_REPO/branches/$base" --silent 2>/dev/null; then
+            echo "FAIL_REASON=Branch '$base' was not found in $TARGET_REPO." >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo "BASE_BRANCH=$base" >> "$GITHUB_ENV"
+          echo "BRANCH_NAME=ai/${JIRA_KEY}-${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Check out target repo at base branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ env.BASE_BRANCH }}
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false   # the agent never gets git push credentials
+          path: work
+
+      - name: Build prompt from template
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+
+          tpl = pathlib.Path("pipeline/.github/prompts/jira-auto-pr.md").read_text()
+
+          def clean(s):
+              # Stop ticket text from closing the wrapper tags early
+              return re.sub(r"</\s*(ticket|summary|description)\s*>",
+                            lambda m: m.group(0).replace("<", "&lt;"), s, flags=re.I)
+
+          values = {
+              "JIRA_KEY": os.environ["JIRA_KEY"],
+              "SUMMARY": clean(os.environ.get("JIRA_SUMMARY", "")),
+              "DESCRIPTION": clean(os.environ.get("JIRA_DESCRIPTION", "")),
+          }
+          # Single pass, so placeholders typed inside the ticket are never expanded
+          prompt = re.sub(r"\{\{(JIRA_KEY|SUMMARY|DESCRIPTION)\}\}",
+                          lambda m: values[m.group(1)], tpl)
+          pathlib.Path(os.environ["RUNNER_TEMP"], "prompt.md").write_text(prompt)
+          PY
+          echo "PROMPT_SHA=$(sha256sum pipeline/.github/prompts/jira-auto-pr.md | cut -c1-12)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Run Copilot
+        working-directory: work
+        env:
+          # Auth via the workflow's GITHUB_TOKEN (billed to the org).
+          # Confirm the env var name against GitHub's "Using Copilot CLI in GitHub Actions with GITHUB_TOKEN" doc.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .jira-auto-pr
+          copilot -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --allow-tool='write, shell(npm:*), shell(npx:*), shell(git status), shell(git diff:*)' \
+            --no-ask-user \
+            --max-ai-credits "$MAX_AI_CREDITS" \
+            2>&1 | tee "$RUNNER_TEMP/agent.log"
+
+      - name: Collect agent outputs
+        working-directory: work
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          if [[ -d .jira-auto-pr ]]; then
+            cp -r .jira-auto-pr/. "$RUNNER_TEMP/out/"
+            rm -rf .jira-auto-pr   # never commit agent scratch files
+          fi
+          if [[ -f "$RUNNER_TEMP/out/QUESTIONS.md" ]]; then
+            echo "OUTCOME=questions" >> "$GITHUB_ENV"
+          fi
+
+      - name: Policy gates
+        if: env.OUTCOME != 'questions'
+        working-directory: work
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "FAIL_REASON=The agent finished without making any changes." >> "$GITHUB_ENV"; exit 1
+          fi
+
+          if git diff --cached --name-only | grep -E '^(\.github/|infra/|terraform/|deploy/)|(^|/)\.env'; then
+            echo "FAIL_REASON=The change touched a protected path, so no PR was opened." >> "$GITHUB_ENV"; exit 1
+          fi
+
+          changed=$(git diff --cached --numstat | awk '{s+=$1+$2} END {print s+0}')
+          echo "CHANGED_LINES=$changed" >> "$GITHUB_ENV"
+          echo "CHANGED_FILES=$(git diff --cached --name-only | wc -l)" >> "$GITHUB_ENV"
+          if (( changed > 1500 )); then
+            echo "FAIL_REASON=The diff was too large ($changed lines) for an automated PR." >> "$GITHUB_ENV"; exit 1
+          fi
+
+          # Tests and linting run in the target repo's normal CI on the PR.
+          # Add a fast pre-check here if you want to block obviously broken PRs.
+
+      - name: Commit, push, open draft PR
+        if: env.OUTCOME != 'questions'
+        working-directory: work
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          git config user.name  "jira-auto-pr[bot]"
+          git config user.email "${{ vars.AGENT_APP_BOT_EMAIL }}"
+          git switch -c "$BRANCH_NAME"
+          git commit -q -m "$JIRA_KEY: $JIRA_SUMMARY"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" "$BRANCH_NAME"
 
           {
-            echo "## jira-auto-pr payload"
-            echo ""
-            echo "**Trigger:** \`$EVENT_NAME\`"
-            echo ""
-            echo '```json'
-            jq . <<< "$payload"
-            echo '```'
+            echo "Implements [$JIRA_KEY]($JIRA_URL)"
+            echo
+            if [[ -f "$RUNNER_TEMP/out/SUMMARY.md" ]]; then
+              cat "$RUNNER_TEMP/out/SUMMARY.md"
+            else
+              echo "_The agent did not write a summary. Review the diff carefully._"
+            fi
+            echo
+            echo "---"
+            echo "Generated by jira-auto-pr · prompt \`$PROMPT_SHA\` · [run log]($RUN_URL)"
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          pr_url=$(gh pr create -R "$TARGET_REPO" --draft \
+            --base "$BASE_BRANCH" --head "$BRANCH_NAME" \
+            --title "$JIRA_KEY: $JIRA_SUMMARY" \
+            --body-file "$RUNNER_TEMP/pr-body.md")
+          echo "PR_URL=$pr_url" >> "$GITHUB_ENV"
+
+      - name: Write run record
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          jq -n \
+            --arg jira_key      "$JIRA_KEY" \
+            --arg target_repo   "${TARGET_REPO:-}" \
+            --arg base_branch   "${BASE_BRANCH:-}" \
+            --arg branch        "${BRANCH_NAME:-}" \
+            --arg pr_url        "${PR_URL:-}" \
+            --arg outcome       "${OUTCOME:-$([[ "$STATUS" == success ]] && echo pr_opened || echo failed)}" \
+            --arg fail_reason   "${FAIL_REASON:-}" \
+            --arg prompt_sha    "${PROMPT_SHA:-}" \
+            --arg max_credits   "$MAX_AI_CREDITS" \
+            --arg changed_lines "${CHANGED_LINES:-0}" \
+            --arg changed_files "${CHANGED_FILES:-0}" \
+            --arg run_url       "$RUN_URL" \
+            --arg finished_at   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{jira_key: $jira_key, target_repo: $target_repo, base_branch: $base_branch,
+              branch: $branch, pr_url: $pr_url, outcome: $outcome, fail_reason: $fail_reason,
+              prompt_sha: $prompt_sha, max_ai_credits: ($max_credits | tonumber),
+              changed_lines: ($changed_lines | tonumber), changed_files: ($changed_files | tonumber),
+              run_url: $run_url, finished_at: $finished_at}' \
+            > "$RUNNER_TEMP/out/run-record.json"
+          cat "$RUNNER_TEMP/out/run-record.json"
+
+      - name: Save run record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jira-auto-pr-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/prompt.md
+            ${{ runner.temp }}/agent.log
+            ${{ runner.temp }}/out/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Show outcome on the run summary page
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## jira-auto-pr: $JIRA_KEY"
+            echo
+            if [[ "$OUTCOME" == "questions" ]]; then
+              echo "**Outcome:** the agent needs clarification before implementing this ticket."
+              echo
+              cat "$RUNNER_TEMP/out/QUESTIONS.md"
+            elif [[ "$STATUS" == "success" ]]; then
+              echo "**Outcome:** draft PR opened: $PR_URL"
+            else
+              echo "**Outcome:** failed. ${FAIL_REASON:-See the step logs for details.}"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
