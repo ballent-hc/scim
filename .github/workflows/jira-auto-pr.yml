@@ -1,0 +1,83 @@
+name: jira-auto-pr
+
+on:
+  # Targeted trigger: POST /repos/{owner}/{repo}/actions/workflows/jira-auto-pr.yml/dispatches
+  # Every input the caller sends must be declared here, or GitHub returns 422.
+  workflow_dispatch:
+    inputs:
+      jira_key:
+        description: Jira ticket key (e.g. PROJ-123)
+        type: string
+        required: true
+      summary:
+        description: Ticket summary
+        type: string
+        required: false
+        default: ""
+      description:
+        description: Ticket description
+        type: string
+        required: false
+        default: ""
+      url:
+        description: Link to the Jira ticket
+        type: string
+        required: false
+        default: ""
+      repo_alias:
+        description: Target repo alias (e.g. cloud-idp)
+        type: string
+        required: false
+        default: ""
+      base:
+        description: Base branch (empty = target repo's default branch)
+        type: string
+        required: false
+        default: ""
+      requested_by:
+        description: Jira account ID of the requester
+        type: string
+        required: false
+        default: ""
+
+  # Also accept repository dispatch while testing:
+  # POST /repos/{owner}/{repo}/dispatches with {"event_type": "jira-auto-pr", "client_payload": {...}}
+  repository_dispatch:
+    types: [jira-auto-pr]
+
+permissions: {}
+
+jobs:
+  log-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log payload
+        env:
+          # Passed through env (never inlined into the script) so ticket text can't inject shell commands
+          EVENT_NAME: ${{ github.event_name }}
+          INPUTS: ${{ toJSON(github.event.inputs) }}
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          echo "Triggered by: $EVENT_NAME"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            payload="$INPUTS"
+          else
+            echo "event_type: $ACTION"
+            payload="$CLIENT_PAYLOAD"
+          fi
+
+          echo "::group::Payload"
+          jq . <<< "$payload"
+          echo "::endgroup::"
+
+          {
+            echo "## jira-auto-pr payload"
+            echo ""
+            echo "**Trigger:** \`$EVENT_NAME\`"
+            echo ""
+            echo '```json'
+            jq . <<< "$payload"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
