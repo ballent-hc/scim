@@ -48,7 +48,7 @@ func createCompareFunction(e *filter.AttributeExpression, attr schema.CoreAttrib
 	case "integer":
 		ref, ok := e.CompareValue.(int)
 		if !ok {
-			return nil, fmt.Errorf("a integer attribute needs to be compared to a int")
+			return nil, fmt.Errorf("an integer attribute needs to be compared to an int")
 		}
 		return cmpInteger(e, ref)
 	default:
