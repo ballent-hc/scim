@@ -28,7 +28,7 @@ func cmpIntStr(ref int, cmp func(v, ref string) error) (func(interface{}) error,
 // cmpInteger returns a compare function that compares a given value to the reference int based on the given attribute
 // expression and integer attribute.
 //
-// Expects a integer attribute. Will panic on unknown filter operator.
+// Expects an integer attribute. Will panic on unknown filter operator.
 // Known operators: eq, ne, co, sw, ew, gt, lt, ge and le.
 func cmpInteger(e *filter.AttributeExpression, ref int) (func(interface{}) error, error) {
 	switch op := e.Operator; op {
